@@ -1,0 +1,371 @@
+<html>
+<head>
+<style>
+body,option, button, input, select {
+	font-size: 20px;
+}
+</style>
+</head>
+<body>
+<div style="display:flex;">
+
+<div>
+<canvas id="map" width="1000" height="1000" style="border: 1px solid black;">
+</canvas>
+</div>
+
+<div>
+
+<div>
+<h4>Render settings:</h4>
+<div style="margin: 10px;">
+  Thickness: <input type="number" value="5" id="thickness" onchange="changeMode()">
+</div>
+<div style="margin: 10px;">
+  Color: <input type="text" value="#000" id="color" onchange="changeMode()">
+</div>
+
+<div style="margin: 10px;">
+  Render mode: <select id="mode" onchange="changeMode()">
+  <option value="lines" selected>Lines</option>
+    <option value="points">Points</option>
+  </select>
+</div>
+
+
+
+</div>
+
+<h4>Tunnel settings:</h4>
+
+<div style="margin: 10px;">
+  Step length: <input type="number" value="10" id="step">
+</div>
+<div style="margin: 10px;">
+  One "tunnel" steps count: <input type="number" value="500" id="steps">
+</div>
+<div style="margin: 10px;">
+  Min "tunnel" steps count: <input type="number" value="3" id="steps_min">
+</div>
+
+<div style="margin: 10px;">
+  Start new tunnel from an existing one: <input type="checkbox" id="fromExisting">
+</div>
+
+
+<div style="margin: 10px;">
+  Random turn angle (-x; +x): <input type="number" value="45" id="angle">
+</div>
+
+<div style="margin: 10px;">
+    <button onClick="addFigure()">Add tunnel</button>
+    <button onClick="removeAll()" >Remove all</button>
+</div>
+
+<div style="margin: 50px;">
+    <button onClick="exportTxt()">Export to .txt</button>
+    <button onClick="exportObj()" >Export to .obj</button>
+	<button onClick="exportPng()" >Export to .png</button>
+</div>
+
+
+</div>
+
+</div>
+
+
+
+<script>
+class Cave {
+  constructor(height, width) {
+    this.figures = [];
+	this.canvas = document.querySelector('#map');
+    this.context = this.canvas.getContext('2d');
+  }
+  get minStepsCount() {
+    return parseInt(document.querySelector("#steps_min").value);
+  }
+  
+  get thickness()  {
+    return parseInt(document.querySelector("#thickness").value);
+  }
+  get mode()  {
+    return document.querySelector("#mode").value;
+  }
+    get color()  {
+    return document.querySelector("#color").value;
+  }
+  
+  getGenerateSettings()
+  {
+	return { 
+	  step: parseInt(document.querySelector("#step").value),
+	  steps: parseInt(document.querySelector("#steps").value),
+	  angle: parseInt(document.querySelector("#angle").value),
+	  fromExisting: document.querySelector("#fromExisting").checked
+	}
+  }
+  
+  clear() {
+	 this.figures = []; 
+  }
+  
+  addFigure() {
+	  // check fig.len and errors
+	  let completed = false;
+	  let errors = 0;
+	  let figure; 
+	  
+	  while(!completed && errors<50 ) {
+	    figure = this.generateFigure();
+        if (!figure || figure.length < this.minStepsCount) {
+          errors++;
+		} else {
+            completed = true;
+		}
+	  }
+	  if (completed) {
+		      this.figures.push(figure);    
+	  } else {
+		  alert('Cant find a place');
+	  }
+  }
+  
+  checkIntersectionFigures(point, STEP)
+  {
+	let foundIntersection = false;
+    this.figures.forEach((f) => {
+	  if (f.find((elem) => this.distanceBetweedTwo(elem, point) < STEP )) {
+	    foundIntersection = true;
+	  }
+    }); 
+	return foundIntersection;
+  }
+  
+  checkIntersection(array, point, STEP) {
+    const newArray = [...array];
+    newArray.splice(-1);
+    return newArray.find((elem) => this.distanceBetweedTwo(elem, point) < STEP ) || this.checkIntersectionFigures(point, STEP)
+  }
+  
+  checkHeightWidth(x,y) {
+	  return (x > 0) && (x < this.canvas.height) && (y > 0) && (y < this.canvas.width)
+  }
+  
+  generateFigure() {
+  //get cave settings
+    const settings = this.getGenerateSettings();
+    const STEP = settings.step;
+	const list = [];
+	
+	const fromExisting = document.querySelector("#fromExisting").checked;
+	
+	let randstart = [];
+	let instersect = true;
+		
+	if (!fromExisting) {
+	  randstart = [Math.floor(Math.random() * (this.canvas.height-STEP))+STEP,Math.floor(Math.random() * (this.canvas.width-STEP) )+STEP ];
+	
+	  while(instersect) {
+        if (this.checkIntersectionFigures(randstart, STEP)) {
+		  randstart = [Math.floor(Math.random() * (this.canvas.height-STEP))+STEP,Math.floor(Math.random() * (this.canvas.width-STEP) )+STEP ];
+	    } else {
+		  instersect = false;
+	    }
+	  }
+	} else {
+		if  (this.figures.length === 0) {
+			randstart = [Math.floor(Math.random() * (this.canvas.height-STEP))+STEP,Math.floor(Math.random() * (this.canvas.width-STEP) )+STEP ];
+		} else {
+		    const randFigure = this.figures[Math.floor(Math.random() * this.figures.length)];
+		    randstart = [...randFigure[Math.floor(Math.random() * randFigure.length)]];		
+		}
+	}
+  
+	list.push(randstart);
+	
+	const degAll = this.dtr(this.randAll());
+	let x = (STEP * Math.cos(degAll)) -  STEP *  Math.sin(degAll);
+	let y = (STEP * Math.sin(degAll)) +  STEP *  Math.cos(degAll); 
+	 
+	const newPointX = randstart[0] + x;	
+	const newPointY = randstart[1] + y;	
+	
+	
+	list.push([newPointX, newPointY]);
+	
+	//check intersection these two points
+	
+	for(let i=2; i< settings.steps; i++) {
+		const prev = list[i-1];
+		const preprev = list[i-2];
+		const third = [
+		prev[0] - preprev[0],
+		prev[1] - preprev[1] 
+		];
+		
+	    let errors = 0;
+		let makeDot = true;
+		
+		while (makeDot) {
+		    if (errors === 100) {
+		        return list;
+		    }
+		
+		    const deg = this.dtr(this.rand(settings.angle));
+		
+		    x = (third[0] * Math.cos(deg)) -  third[1] *  Math.sin(deg);
+	        y = (third[0] * Math.sin(deg)) +  third[1] *  Math.cos(deg);
+
+            const newPointX = prev[0] + x;	
+			const newPointY = prev[1] + y;	
+		
+		    if (this.checkHeightWidth(newPointX,newPointY ) && !this.checkIntersection(list,[newPointX, newPointY], STEP )) {
+			
+			//check intersection other lines exept prev
+			    list.push([newPointX, newPointY]);
+		
+		        makeDot = false;
+			    errors = 0;
+		    } else {
+		        errors++;
+		    }
+		}
+	}
+	return list;
+  }
+  renderLine(f) {
+	const first = f[0];
+	this.context.beginPath(); 
+	this.context.lineWidth = this.thickness;
+    this.context.moveTo(first[0], first[1]);
+			
+	f.forEach((e) =>  {
+	  if (JSON.stringify(e) != JSON.stringify(first)) {
+	    this.context.lineTo(e[0], e[1]);
+	  }
+	})
+	this.context.strokeStyle = this.color;
+	this.context.stroke(); // Render the path
+  }
+  
+  renderPoints(f) {
+	  f.forEach((e) =>  {   
+      	const radius = 0.5 * this.thickness;
+      	
+		const pointX = Math.round(e[0] - radius);
+        const pointY = Math.round(e[1] - radius);
+        this.context.beginPath();
+        this.context.fillStyle = this.color;
+      	this.context.fillRect(pointX, pointY, this.thickness, this.thickness);
+        this.context.fill(); 
+	  });
+  }
+  exportObj() {
+    const output = [];
+	if(this.figures.length === 0) {
+		alert("Nothing to import");
+        return;		
+	} 
+	output.push('o Cave');
+    this.figures.forEach((f) => {
+	  f.forEach((e) => {
+	    output.push('v '+e[0]+' 0 '+e[1]);
+		})
+    });
+	this.save("cave.obj", output.join("\r\n"), "text/csv" )
+  }
+  exportPng() {
+	  const link = window.document.createElement('a');
+	  link.download = 'download.png';
+	  link.href = this.canvas.toDataURL();
+	  link.click();
+      link.delete;
+  }
+  exportTxt() {
+	  const output = [];
+	  if(this.figures.length === 0) {
+		alert("Nothing to import");
+        return;		
+	  } 
+      this.figures.forEach((f) => {
+	    f.forEach((e) => {
+		 output.push(e[0]+' '+e[1]);
+		})
+    });
+	this.save("cave.txt", output.join("\r\n"), "text/csv" )
+  }
+  
+  save(filename, data, type) {
+    const blob = new Blob([data], {type: type});
+    if(window.navigator.msSaveOrOpenBlob) {
+        window.navigator.msSaveBlob(blob, filename);
+    }
+    else{
+        const elem = window.document.createElement('a');
+        elem.href = window.URL.createObjectURL(blob);
+        elem.download = filename;        
+        document.body.appendChild(elem);
+        elem.click();        
+        document.body.removeChild(elem);
+    }
+  }
+
+  render() {
+  //get render settings
+  
+  this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
+  this.figures.forEach((f) => {
+    if (this.mode === "lines") {
+	  this.renderLine(f);
+	}
+	if (this.mode === "points") {
+	  this.renderPoints(f);
+	}
+
+
+    });
+  }
+ 
+  rand = (angle) =>  Math.floor(Math.random() * (angle*2))-angle;
+  randAll = () =>  Math.floor(Math.random() * 360)-180;
+  dtr = (degrees) => degrees * (Math.PI/180);
+  distanceBetweedTwo = (a,b) => Math.sqrt( ((a[0] - b[0])*(a[0] - b[0])) + (  (a[1] - b[1]) * (a[1] - b[1])  ) );
+ 
+}
+
+function changeMode() {
+  cave.render();
+}
+
+function exportTxt() {
+  cave.exportTxt();
+}
+
+function exportPng() {
+//var dataURL = canvas.toDataURL("image/png");
+  cave.exportPng();
+}
+
+function exportObj() {
+  cave.exportObj();
+}
+
+function addFigure() {
+  cave.addFigure();
+  cave.render();
+}
+
+function removeAll() {
+  cave.clear()
+  cave.render();
+}
+
+const cave = new Cave;
+addFigure();
+
+	
+	
+</script>
+</body>
+</html>
